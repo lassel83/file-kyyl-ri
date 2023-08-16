@@ -1,0 +1,58 @@
+import os
+import hashlib
+import json
+import time
+from datetime import datetime
+
+def get_file_hash(file_path):
+    hasher = hashlib.sha256()
+    with open(file_path, 'rb') as f:
+        while chunk := f.read(8192):
+            hasher.update(chunk)
+    return hasher.hexdigest()
+
+def scan_folder(folder_path, log_file_path, last_state_path):
+    current_state = {}
+    if os.path.exists(last_state_path):
+        with open(last_state_path, 'r') as last_state_file:
+            current_state = json.load(last_state_file)
+
+    with open(log_file_path, 'a') as log_file:
+        log_file.write("Scan started at: {}\n".format(datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")))
+
+        removed_files = []
+        for file_path in current_state.keys():
+            if not os.path.exists(file_path):
+                removed_files.append(file_path)
+
+        if removed_files:
+            log_file.write("Removed files:\n")
+            for removed_file in removed_files:
+                log_file.write(" - {}\n".format(removed_file))
+                del current_state[removed_file]
+
+        for root, _, files in os.walk(folder_path):
+            for file in files:
+                file_path = os.path.join(root, file)
+                file_hash = get_file_hash(file_path)
+
+                if file_path in current_state and current_state[file_path] == file_hash:
+                    continue
+
+                change_info = "{} - {}".format(file_path, "added" if file_path not in current_state else "changed")
+                log_file.write(change_info + "\n")
+
+                current_state[file_path] = file_hash
+
+        with open(last_state_path, 'w') as last_state_file:
+            json.dump(current_state, last_state_file, indent=4)
+
+        log_file.write("Scan completed at: {}\n".format(datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")))
+
+if __name__ == "__main__":
+    folder_to_monitor = r'C:\test1'
+    current_date_time_ms = datetime.now().strftime("%Y-%m-%d_%H-%M-%S-%f")
+    log_file_path = f'changes_{current_date_time_ms}.log'
+    last_state_path = 'last_state.json'
+
+    scan_folder(folder_to_monitor, log_file_path, last_state_path)
